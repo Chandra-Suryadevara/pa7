@@ -29,6 +29,7 @@ bool inspect_packet();
 unsigned int calcrc1();
 unsigned int extractCRC(uint8_t buf[]);
 unsigned int extractCRC2(uint8_t buf[]);
+uint8_t buf[] make_packet(unsigned int Type, unsigned int TR, unsigned int Seqnum);
 
 unsigned int calcrc2();
 /*setter function for recent ack*/
@@ -51,6 +52,7 @@ int nextseq = 0;
 struct addrinfo hints, * results, * ptr;
 int SeqnumSize;
 uint8_t buffer[maxSize];
+std::queue<std::vector<uint8_t>>sentpackets;
 std::queue<std::vector<uint8_t>> data;
 int recent_ack;
 };

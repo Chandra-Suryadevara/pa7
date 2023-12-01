@@ -12,6 +12,78 @@
 
 
 
+
+unsigned int Receiver::calcrc1() {
+    unsigned int crc1;
+
+    crc1 = crc32(0L, NULL, 0);
+    crc1 = crc32(crc1, (reinterpret_cast<const Bytef*>(buffer)), 8);
+    return crc1;
+}
+
+
+
+
+std::vector<uint8_t> Receiver::extract_payload(uint8_t buf[]) {
+    std::vector<uint8_t> sub_payload(datasize);
+    for (int i = 0; i < datasize; i++) {
+        sub_payload[i] = buf[12 + i];
+    }
+    return sub_payload;
+}
+
+
+unsigned int Receiver::calcrc2() {
+    uint8_t sub_payload[datasize];
+    for (int i = 0; i < datasize; i++) {
+        sub_payload[i] = buffer[12 + i];
+    }
+    unsigned long crc2;
+
+    crc2 = crc32(0L, NULL, 0);
+    crc2 = crc32(crc2, (reinterpret_cast<const Bytef*>(sub_payload)), datasize);
+    return crc2;
+}
+
+unsigned int Receiver::extractCRC(uint8_t buf[]) {
+    unsigned int crc = 0;
+    crc |= buf[CRC] << 24;
+    crc |= buf[CRC + 1] << 16;
+    crc |= buf[CRC + 2] << 8;
+    crc |= buf[CRC + 3];
+    return crc;
+}
+
+unsigned int Receiver::extractCRC2(uint8_t buf[]) {
+    int CRC2 = 12 + datasize;
+    unsigned int crc = 0;
+    crc |= buf[CRC2] << 24;
+    crc |= buf[CRC2 + 1] << 16;
+    crc |= buf[CRC2 + 2] << 8;
+    crc |= buf[CRC2 + 3];
+    return crc;
+}
+
+unsigned int Receiver::extractLength(uint8_t buf[]) {
+    unsigned int length = (buf[L] << 8) | buf[L + 1];
+    return length;
+}
+
+int Receiver::getdatasize() {
+    return datasize;
+}
+
+int Receiver::getSeqSize() {
+    return SeqnumSize;
+}
+
+std::queue<std::vector<uint8_t>> Receiver::get_data() {
+
+
+    return data;
+}
+
+
 int main(int argc, char* argv[]) {
     if (argc < 6) {
         std::cerr << "Usage: receiver [-f data_file] [-IPTYPE] host port" << std::endl;
@@ -75,6 +147,81 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+void Receiver::Send_neg_ack_packet(uint8_t buf[]) {
+    ///sending a pacekt
+    if ((buf[TP] >> 6 & 0b11) == 3) {
+
+        if (sendto(sock, reinterpret_cast<const char*>(buf), headersize + datasize, 0, ptr->ai_addr, ptr->ai_addrlen) == -1) {
+            std::cerr << "Error sending negative ack packet" << std::endl;
+        }
+        else {
+            sentpackets.push(buf);
+        }
+    }
+}
+
+uint8_t buf[] Receiver::make_packet(unsigned int type, unsigned int TR, unsigned int Seqnum)
+{
+    uint8_t buf[];
+    for (int i = 0; i < maxsize; i++) {
+        buf[i] = buf[i] & 0x00;
+    }
+    if (type > 0 && type <= 3) {
+        // Clear the existing value and set the lowest 2 bits of type
+        buf[TP] &= 0x3f;
+        buf[TP] |= (type << 6);
+
+    }
+    if (TR == 0 || TR == 1) {
+
+        buf[TP] &= 0xDF;
+        buf[TP] |= (TR << 5) >> 2;
+
+    }
+
+
+    buf[TP + 1] &= 0;
+    buf[TP + 1] |= Seqnum;
+
+        temppacket = DefineType(temppacket, 1);
+        temppacket = DefineTR(temppacket, 0);
+        temppacket = AddSeq(temppacket);
+        temppacket = AddLength(temppacket, data_size);
+        temppacket = AddTime(temppacket, timestep);
+
+
+
+        for (int i = 0; i < data_size; i++) {
+            temppacket.data[Pay + i] &= 0x00;
+
+        }
+
+        for (int i = 0; i < data_size; i++) {
+            temppacket.data[Pay + i] = static_cast<uint8_t>(payload[i]);
+        }
+        if (TRL == 0) {
+            unsigned long crc1;
+
+            crc1 = crc32(0L, NULL, 0);
+            crc1 = crc32(crc1, (reinterpret_cast<const Bytef*>(temppacket.data)), 8);
+            //fake implementation to imitate crc's
+            temppacket = setCRC1(temppacket, crc1);
+
+            uint8_t sub_payload[data_size];
+
+
+            for (int i = 0; i < data_size; i++) {
+                sub_payload[i] = temppacket.data[12 + i];
+            }
+            unsigned long crc2;
+
+            crc2 = crc32(0L, NULL, 0);
+            crc2 = crc32(crc2, (reinterpret_cast<const Bytef*>(sub_payload)), data_size);
+
+
+            temppacket = setCRC2(temppacket, crc2);
+        }
+    }
 
 Receiver::Receiver(const char* destinationHost, const char* destinationPort, const char* IPTYPE){
     int ai_family = AF_UNSPEC; // Default to both IPv4 and IPv6
@@ -111,15 +258,7 @@ Receiver::Receiver(const char* destinationHost, const char* destinationPort, con
     }
 }
 
-int Receiver::getSeqSize() {
-    return SeqnumSize;
-}
 
-std::queue<std::vector<uint8_t>> Receiver::get_data(){
-
-
-    return data;
-}
 
 void Receiver::receive_data(){
     sockaddr localAddr;
@@ -144,80 +283,20 @@ if (receivedBytes > 0) {
     } else {
         std::cerr << "Error receiving data" << std::endl;
     }
+    
+
+
+
+
 }
-
-
-
-unsigned int Receiver::calcrc1(){
-     unsigned int crc1;
-            
-    crc1 = crc32(0L, NULL, 0);
-    crc1 = crc32(crc1, (reinterpret_cast<const Bytef*>(buffer)),8 );
-    return crc1;
-}
-
-
-
-
-std::vector<uint8_t> Receiver::extract_payload(uint8_t buf[]){
-    std::vector<uint8_t> sub_payload(datasize); 
-        for (int i = 0; i < datasize; i++) {
-                sub_payload[i] = buf[12 + i];
-            }
-    return sub_payload;
-}
-
-
-unsigned int Receiver::calcrc2(){
-      uint8_t sub_payload[datasize];
-    for (int i = 0; i < datasize; i++) {
-                sub_payload[i] = buffer[12 + i];
-            }
-            unsigned long crc2;
-
-            crc2 = crc32(0L, NULL, 0);
-            crc2 = crc32(crc2, (reinterpret_cast<const Bytef*>(sub_payload)), datasize);
-    return crc2;
-}
-
-unsigned int Receiver::extractCRC(uint8_t buf[]) {
-    unsigned int crc = 0;
-    crc |= buf[CRC] << 24;
-    crc |= buf[CRC + 1] << 16;
-    crc |= buf[CRC + 2] << 8;
-    crc |= buf[CRC + 3];
-    return crc;
-}
-
-unsigned int Receiver::extractCRC2(uint8_t buf[]) {
-    int CRC2 = 12 + datasize;
-    unsigned int crc = 0;
-    crc |= buf[CRC2] << 24;
-    crc |= buf[CRC2 + 1] << 16;
-    crc |= buf[CRC2 + 2] << 8;
-    crc |= buf[CRC2 + 3];
-    return crc;
-}
-
-unsigned int Receiver::extractLength(uint8_t buf[]) {
-    unsigned int length = (buf[L] << 8) | buf[L + 1];
-    return length;
-}
-
-int Receiver::getdatasize() {
-    return datasize;   
-}
-
-
 
 
 bool Receiver::inspect_packet(){
     uint8_t y = nextseq;
     if((buffer[TP] >> 6) == 0x1){
-        if(buffer[TP] & 0x20 == 0x0){
+        if((buffer[TP] & 0x20) == 0x0){
             if(buffer[TP+1]  == y){
                 unsigned int local_crc1 = calcrc1();
-                
                 if(local_crc1 == extractCRC(buffer)){
                     datasize = extractLength(buffer);
                     unsigned int local_crc2 = calcrc2();
@@ -236,11 +315,29 @@ bool Receiver::inspect_packet(){
                 std::cerr << "Seq Num Not Right";
                 return false;
             }    
-        } else{
-            std::cerr << "TR is not right";
+        }
+        else if ((buffer[TP] & 0x20) == 0x1) { // send a negative acknowledgment
+
+
+
+        }
+        else {
+            std::cerr << "TR is wrong right";
             return false;
         }
-    }else{
+    }
+    else if ((buffer[TP] >> 6) == 0x2) {  //ack pacekt
+
+        std::cout << "Receieved a acknowledge pacekt"<<std::endl;
+
+
+    }
+    else if ((buffer[TP] >> 6) == 0x3) {  //negative ack pacekt
+
+        std::cout << "Receieved a acknowledge pacekt" << std::endl;
+
+
+    }else { // if type is other
         std::cerr << "Type is differnt cannot get data";
         return false;
     }
