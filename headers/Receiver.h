@@ -20,8 +20,9 @@ bool acknowledge_check (int n);
 void receive_data();
 /*Checks if teh seq number passed is the consecutive number if true checks 
 is buffer is empty or the buffer has previous  seq numbers or it adds the seq number to buffer*/
-void data_received(int seq);
-int getSeqSize();
+
+int getWinSize();
+
 /*concats buffer with recent_ack*/
 int get_recent_ack();
 bool save_packet(std::string file_name);
@@ -29,12 +30,13 @@ bool inspect_packet();
 unsigned int calcrc1();
 unsigned int extractCRC(uint8_t buf[]);
 unsigned int extractCRC2(uint8_t buf[]);
-uint8_t buf[] make_packet(unsigned int Type, unsigned int TR, unsigned int Seqnum);
-
+void Send_neg_ack_packet(uint8_t buf[]);
+void Send_ack_packet(uint8_t buf[]);
+std::array<std::uint8_t, maxSize> make_packet(unsigned int Type, unsigned int TR, unsigned int Seqnum);
 unsigned int calcrc2();
 /*setter function for recent ack*/
-void set_recent_ack(int ack);
-std::vector<int> get_ack();
+void set_winsize(int win);
+void set_crc1(unsigned int CRC1);
 unsigned int extractLength(uint8_t buf[]);
 std::queue<std::vector<uint8_t>> get_data();
 std::vector<uint8_t> extract_payload(uint8_t buf[]);
@@ -50,11 +52,12 @@ int sock, rval;
 int datasize;
 int nextseq = 0;
 struct addrinfo hints, * results, * ptr;
-int SeqnumSize;
+int Winsize;
+unsigned int crc1;
 uint8_t buffer[maxSize];
 std::queue<std::vector<uint8_t>>sentpackets;
-std::queue<std::vector<uint8_t>> data;
-int recent_ack;
+std::queue<std::vector<uint8_t>> data; 
+int recent_ack = 04;
 };
 
 #endif

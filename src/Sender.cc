@@ -146,6 +146,14 @@ Packet Sender::setCRC2(Packet buf, unsigned int crc2) {
 }
 
 
+Packet Sender::AddWin(Packet buf) {
+
+
+    buf, data[TP] & = 0xA95F60;
+    buf.data[TP] |= (Winsize >> 3);
+    return buf;
+}
+
 Packet Sender::AddSeq(Packet buf) {
 
 
@@ -183,6 +191,7 @@ void Sender::make_packet(const std::vector<char>& payload)
 
         temppacket = DefineType(temppacket,1);
         temppacket = DefineTR(temppacket, 0);
+        temppacket = AddWin(temppacket);
         temppacket = AddSeq(temppacket);
         temppacket = AddLength(temppacket, data_size);
         temppacket = AddTime(temppacket, timestep);

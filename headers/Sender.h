@@ -23,6 +23,7 @@ public:
       Packet DefineTR(Packet buf, int TR);
       Packet setCRC1(Packet buf, unsigned int crc1);
       Packet setCRC2(Packet buf, unsigned int crc2);
+      Packet AddWin(Packet buf);
       Packet AddSeq(Packet buf);
       Packet AddLength(Packet buf, unsigned int length);
       Packet AddTime(Packet buf, unsigned int time);

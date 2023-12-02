@@ -54,6 +54,12 @@ unsigned int Receiver::extractCRC(uint8_t buf[]) {
     return crc;
 }
 
+void Receiver::set_crc1(unsigned int CRC1) {
+
+    crc1 = CRC1;
+
+}
+
 unsigned int Receiver::extractCRC2(uint8_t buf[]) {
     int CRC2 = 12 + datasize;
     unsigned int crc = 0;
@@ -73,10 +79,13 @@ int Receiver::getdatasize() {
     return datasize;
 }
 
-int Receiver::getSeqSize() {
-    return SeqnumSize;
+int Receiver::getWinSize() {
+    return Winsize;
 }
 
+void Receiver::set_winsize(int win) {
+    Winsize = win;
+}
 std::queue<std::vector<uint8_t>> Receiver::get_data() {
 
 
@@ -139,13 +148,45 @@ int main(int argc, char* argv[]) {
     }else{
         std::cout<<"writing done";
     }
-     }else{
+     }else if({
 
         std::cerr<<"something is wrong with the packet";
      }
     of.close();
     return 0;
 }
+
+void Receiver::Send_packet(uint8_t buf[]) {
+
+    if ((buf[TP] >> 6 & 0b11) == 1) {
+        if ((buf[TP] & 0x20) == 1) {
+
+        if (sendto(sock, reinterpret_cast<const char*>(buf), headersize + datasize, 0, ptr->ai_addr, ptr->ai_addrlen) == -1) {
+            std::cerr << "Error sending stripped paylaod  packet" << std::endl;
+        }
+        else {
+            sentpackets.push(buf);
+            std::cout << "sent a stripped of packet for seq NUm " << static_cast<int>(buf[TP + 1]) << std::endl;
+        }
+    }
+}
+
+void Receiver::Send_ack_packet(uint8_t buf[]) {
+    ///sending a pacekt
+    if ((buf[TP] >> 6 & 0b11) == 2) {
+
+        if (sendto(sock, reinterpret_cast<const char*>(buf), headersize + datasize, 0, ptr->ai_addr, ptr->ai_addrlen) == -1) {
+            std::cerr << "Error sending negative ack packet" << std::endl;
+        }
+        else {
+            sentpackets.push(buf);
+            std::cout << "sent a Ack packet for seq NUm "<< static_cast<int>(buf[TP + 1]) << std::endl;
+        }
+    }
+}
+
+
+
 
 void Receiver::Send_neg_ack_packet(uint8_t buf[]) {
     ///sending a pacekt
@@ -156,13 +197,14 @@ void Receiver::Send_neg_ack_packet(uint8_t buf[]) {
         }
         else {
             sentpackets.push(buf);
+            std::cout << "sent a negative Ack packet for seq NUm " << static_cast<int>(buf[TP + 1]) << std::endl;
         }
     }
 }
 
-uint8_t buf[] Receiver::make_packet(unsigned int type, unsigned int TR, unsigned int Seqnum)
+std::array<std::uint8_t, maxSize> Receiver::make_packet(unsigned int type, unsigned int TR, unsigned int Seqnum)
 {
-    uint8_t buf[];
+    uint8_t buf[maxSize];
     for (int i = 0; i < maxsize; i++) {
         buf[i] = buf[i] & 0x00;
     }
@@ -180,47 +222,16 @@ uint8_t buf[] Receiver::make_packet(unsigned int type, unsigned int TR, unsigned
     }
 
 
-    buf[TP + 1] &= 0;
-    buf[TP + 1] |= Seqnum;
-
-        temppacket = DefineType(temppacket, 1);
-        temppacket = DefineTR(temppacket, 0);
-        temppacket = AddSeq(temppacket);
-        temppacket = AddLength(temppacket, data_size);
-        temppacket = AddTime(temppacket, timestep);
-
-
+        buf[TP + 1] &= 0;
+        buf[TP + 1] |= Seqnum;
 
         for (int i = 0; i < data_size; i++) {
-            temppacket.data[Pay + i] &= 0x00;
+            buf[Pay + i] &= 0x00;
 
         }
 
-        for (int i = 0; i < data_size; i++) {
-            temppacket.data[Pay + i] = static_cast<uint8_t>(payload[i]);
-        }
-        if (TRL == 0) {
-            unsigned long crc1;
-
-            crc1 = crc32(0L, NULL, 0);
-            crc1 = crc32(crc1, (reinterpret_cast<const Bytef*>(temppacket.data)), 8);
-            //fake implementation to imitate crc's
-            temppacket = setCRC1(temppacket, crc1);
-
-            uint8_t sub_payload[data_size];
-
-
-            for (int i = 0; i < data_size; i++) {
-                sub_payload[i] = temppacket.data[12 + i];
-            }
-            unsigned long crc2;
-
-            crc2 = crc32(0L, NULL, 0);
-            crc2 = crc32(crc2, (reinterpret_cast<const Bytef*>(sub_payload)), data_size);
-
-
-            temppacket = setCRC2(temppacket, crc2);
-        }
+        return buf;
+      
     }
 
 Receiver::Receiver(const char* destinationHost, const char* destinationPort, const char* IPTYPE){
@@ -283,9 +294,11 @@ if (receivedBytes > 0) {
     } else {
         std::cerr << "Error receiving data" << std::endl;
     }
+        
     
 
 
+        
 
 
 }
@@ -295,30 +308,60 @@ bool Receiver::inspect_packet(){
     uint8_t y = nextseq;
     if((buffer[TP] >> 6) == 0x1){
         if((buffer[TP] & 0x20) == 0x0){
-            if(buffer[TP+1]  == y){
+            if(acknowledge_check(buffer[TP+1]) && sizeof(data) == 0){
                 unsigned int local_crc1 = calcrc1();
                 if(local_crc1 == extractCRC(buffer)){
                     datasize = extractLength(buffer);
                     unsigned int local_crc2 = calcrc2();
                     unsigned int given_crc2 = extractCRC2(buffer);
                     if(local_crc2 == given_crc2){
+                        if (sizeof(data) == 0) {
+                            set_winsize(buffer[TP] & 0x2B67);
+                            setcrc1(local_crc1);
+                        }
                          data.push(extract_payload(buffer));
+                         nextseq++;
+                         recent_ack = buffer[TP + 1];
+                         Send_ack_packet(make_packet(2, 0, nextseq - 1));
                         return true ;
                     }else {
                         std::cerr<<"Not matching CRC's computed CRC2:"<<local_crc2<<"found CRC1:"<<given_crc2;
+                        return false;
                     }
                 }else {
                     std::cerr<<"Not matching CRC's computed CRC1:"<<local_crc1<<"found CRC1:"<<extractCRC(buffer);
-            
+                    return false;
                 }
-            } else{
+            }
+            else if (acknowledge_check(buffer[TP + 1])) {
+                
+                if ( crc1 == extractCRC(buffer)) {
+                    datasize = extractLength(buffer);
+                    unsigned int local_crc2 = calcrc2();
+                    unsigned int given_crc2 = extractCRC2(buffer);
+                    if (local_crc2 == given_crc2) {
+                        data.push(extract_payload(buffer));
+                        recent_ack = buffer[TP + 1];
+                        return true;
+                    }
+                    else {
+                        std::cerr << "Not matching CRC's computed CRC2:" << local_crc2 << "found CRC1:" << given_crc2;
+                        return false;
+                    }
+                }
+                else {
+                    std::cerr << "Not matching CRC's computed CRC1 which was received with first packet:" << local_crc1 << "found CRC1:" << extractCRC(buffer);
+                    return false;
+                }
+            
+            }else {
                 std::cerr << "Seq Num Not Right";
                 return false;
             }    
         }
         else if ((buffer[TP] & 0x20) == 0x1) { // send a negative acknowledgment
-
-
+            Send_neg_ack_packet(make_packet(3, 0, nextseq))
+            return false;
 
         }
         else {
@@ -329,46 +372,32 @@ bool Receiver::inspect_packet(){
     else if ((buffer[TP] >> 6) == 0x2) {  //ack pacekt
 
         std::cout << "Receieved a acknowledge pacekt"<<std::endl;
-
+        return false;
 
     }
     else if ((buffer[TP] >> 6) == 0x3) {  //negative ack pacekt
 
-        std::cout << "Receieved a acknowledge pacekt" << std::endl;
-
+        std::cout << "Receieved a negative acknowledge pacekt" << std::endl;
+        return false;
 
     }else { // if type is other
         std::cerr << "Type is differnt cannot get data";
         return false;
     }
 }
-/*
 
-bool Receiver::acknowledge_check(int n){
 
-if(n == recent_ack + 1 || getSeqSize() - (recent_ack + 1 ) == 0 ){
+bool Receiver::acknowledge_check(int n){// do from here see the logic and recent ack declaration
+
+if(n == recent_ack + 1 || getWinsize() - (recent_ack + 1 ) == 0 ){
     return true;
 } else {
     return false;
 }
 }
-
+/*
 void Receiver::data_received() {
-    if (acknowledge_check(seq)) {
-        set_recent_ack(seq);
 
-        // Check if the buffer is not empty
-        if (!buffer.empty() && acknowledge_check(buffer.front())) {
-            int front = buffer.front();
-            buffer.erase(buffer.begin());
-            data_received(front);
-        }
-
-    }
-    else {
-        buffer.push_back(seq);
-    }
-}
 
 
 std::vector<int> Receiver::get_ack() {
