@@ -42,6 +42,9 @@ std::queue<std::vector<uint8_t>> get_data();
 std::vector<uint8_t> extract_payload(uint8_t buf[]);
 int getdatasize();
 private:
+std::mutex mtx;  // Mutex for synchronization
+std::condition_variable cv;  // Condition variable for signaling
+std::atomic<bool> done_receiving{ false };
 const int L = 2;
 const int T = 4;
 const int TP = 0;

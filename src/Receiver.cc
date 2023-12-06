@@ -132,7 +132,13 @@ int main(int argc, char* argv[]) {
     }
 
      Receiver Receiver(argv[4], argv[5], argv[3]);
-     Receiver.receive_data();
+     std::thread receiving_thread(&Receiver::receive_data, &receiver);
+     std::thread saving_thread(&Receiver::save_data_to_file, &receiver, data_file);
+
+     // Join the threads to the main thread
+     receiving_thread.join();
+     saving_thread.join();
+     /*
      if (Receiver.inspect_packet()){
      std::queue<std::vector<uint8_t>> data = Receiver.get_data();
     while (!data.empty()) {
@@ -152,9 +158,49 @@ int main(int argc, char* argv[]) {
 
         std::cerr<<"something is wrong with the packet";
      }
-    of.close();
+    of.close(); */
     return 0;
 }
+void Receiver::save_data_to_file(const std::string& data_file) {
+    // Open the file for writing
+    std::ofstream of(data_file.c_str(), std::ios::binary | std::ios::out);
+        if (of.fail()) {
+            std::cout << "Cannot create file" << std::endl;
+            return;
+        }
+
+    std::unique_lock<std::mutex> lock(mtx);
+
+    while (!done_receiving) {
+        // Wait until data is available for saving
+        cv.wait(lock, [this] { return !data.empty() || done_receiving; });
+
+        // Save data to file if available
+        while (!data.empty()) {
+            const auto& byteVector = data.front();
+            of.write(reinterpret_cast<const char*>(byteVector.data()), byteVector.size());
+            data.pop();
+        }
+
+        // Check if done receiving
+        if (done_receiving) {
+            break;
+        }
+    }
+
+    // Close the file
+    of.close();
+
+    if (of.fail()) {
+        std::cout << "Write failed" << std::endl;
+        return;
+    }
+    else {
+        std::cout << "Writing done" << std::endl;
+    }
+}
+
+
 
 void Receiver::Send_packet(uint8_t buf[]) {
 
@@ -323,6 +369,8 @@ bool Receiver::inspect_packet(){
                          nextseq++;
                          recent_ack = buffer[TP + 1];
                          Send_ack_packet(make_packet(2, 0, nextseq - 1));
+                         cv.notify_one();
+                         std::cout << "Sent a acknoledgement for " << nextseq - 1 << "packet"<<std::endl;
                         return true ;
                     }else {
                         std::cerr<<"Not matching CRC's computed CRC2:"<<local_crc2<<"found CRC1:"<<given_crc2;
@@ -342,6 +390,9 @@ bool Receiver::inspect_packet(){
                     if (local_crc2 == given_crc2) {
                         data.push(extract_payload(buffer));
                         recent_ack = buffer[TP + 1];
+                        Send_ack_packet(make_packet(2, 0, nextseq - 1));
+                        std::cout << "Sent a acknoledgement for " << nextseq - 1 << "packet" << std::endl;
+                        cv.notify_one();
                         return true;
                     }
                     else {
@@ -361,6 +412,7 @@ bool Receiver::inspect_packet(){
         }
         else if ((buffer[TP] & 0x20) == 0x1) { // send a negative acknowledgment
             Send_neg_ack_packet(make_packet(3, 0, nextseq))
+            std::cout << "Sent a begative acknoledgement for " << nextseq << "packet" << std::endl;
             return false;
 
         }
