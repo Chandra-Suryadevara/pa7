@@ -2,6 +2,7 @@
 #include <iostream>
 #include <math.h>
 #include <vector>
+#include <thread>
 #include <unistd.h>
 #include <netdb.h>
 #include <cstring>
@@ -120,45 +121,14 @@ int main(int argc, char* argv[]) {
         
     }
 
-
-
-     std::ofstream of;
-
-  // open file in binary mode
-  of.open(data_file.c_str(), std::ios::binary | std::ios::out);
-    if (of.fail()) {
-        std::cout << "Cannot create file" << std::endl;
-        return 1;
-    }
-
      Receiver Receiver(argv[4], argv[5], argv[3]);
      std::thread receiving_thread(&Receiver::receive_data, &receiver);
      std::thread saving_thread(&Receiver::save_data_to_file, &receiver, data_file);
+         
 
      // Join the threads to the main thread
      receiving_thread.join();
      saving_thread.join();
-     /*
-     if (Receiver.inspect_packet()){
-     std::queue<std::vector<uint8_t>> data = Receiver.get_data();
-    while (!data.empty()) {
-        const auto& byteVector = data.front();
-        of.write(reinterpret_cast<const char*>(byteVector.data()), byteVector.size());
-        data.pop();
-    }
-
-    if (of.fail()) {
-        std::cout << "Write failed" << std::endl;
-        of.close();
-        return 2;
-    }else{
-        std::cout<<"writing done";
-    }
-     }else if({
-
-        std::cerr<<"something is wrong with the packet";
-     }
-    of.close(); */
     return 0;
 }
 void Receiver::save_data_to_file(const std::string& data_file) {
@@ -229,6 +199,12 @@ void Receiver::Send_ack_packet(uint8_t buf[]) {
             std::cout << "sent a Ack packet for seq NUm "<< static_cast<int>(buf[TP + 1]) << std::endl;
         }
     }
+}
+
+bool Receiver::is_done() {
+
+    return done_receiving;
+
 }
 
 
@@ -318,32 +294,49 @@ Receiver::Receiver(const char* destinationHost, const char* destinationPort, con
 
 
 void Receiver::receive_data(){
-    sockaddr localAddr;
-    sockaddr_storage clientAddr;
-    socklen_t localAddrLen = sizeof(localAddr);
-    socklen_t clientAddrLen = sizeof(clientAddr);
 
-    getsockname(sock, &localAddr, &localAddrLen);
-    ssize_t receivedBytes = 0;
-    if (localAddr.sa_family == AF_INET) {
-        sockaddr_in* ipv4LocalAddr = (sockaddr_in*)&localAddr;
-        std::cout << "Bound to port: " << ntohs(ipv4LocalAddr->sin_port) << std::endl;
+    auto start_time = std::chrono::steady_clock::now();
+    auto timeout_duration = std::chrono::seconds(60);
+    while (!is_done()) {
+        sockaddr localAddr;
+        sockaddr_storage clientAddr;
+        socklen_t localAddrLen = sizeof(localAddr);
+        socklen_t clientAddrLen = sizeof(clientAddr);
 
-         receivedBytes = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr*)&clientAddr, &clientAddrLen);
-    } else if (localAddr.sa_family == AF_INET6) {
-        sockaddr_in6* ipv6LocalAddr = (sockaddr_in6*)&localAddr;
-        std::cout << "Bound to port: " << ntohs(ipv6LocalAddr->sin6_port) << std::endl;
-    receivedBytes = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr*)&clientAddr, &clientAddrLen);
+        getsockname(sock, &localAddr, &localAddrLen);
+        ssize_t receivedBytes = 0;
+        if (localAddr.sa_family == AF_INET) {
+            sockaddr_in* ipv4LocalAddr = (sockaddr_in*)&localAddr;
+            std::cout << "Bound to port: " << ntohs(ipv4LocalAddr->sin_port) << std::endl;
+
+            receivedBytes = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr*)&clientAddr, &clientAddrLen);
+        }
+        else if (localAddr.sa_family == AF_INET6) {
+            sockaddr_in6* ipv6LocalAddr = (sockaddr_in6*)&localAddr;
+            std::cout << "Bound to port: " << ntohs(ipv6LocalAddr->sin6_port) << std::endl;
+            receivedBytes = recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr*)&clientAddr, &clientAddrLen);
+        }
+        if (receivedBytes > 0) {
+            
+            inspect_packet();
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::cout << "Packet received. Resetting timer." << std::endl;
+            start_time = std::chrono::steady_clock::now();
+            
+        }
+        else {
+            std::cerr << "Error receiving data" << std::endl;
+        }
+        auto current_time = std::chrono::steady_clock::now();
+        if (current_time - start_time > timeout_duration) {
+
+            std::cout << "Timeout occurred. No data received within 60 seconds." << std::endl;
+            done_receiving = true;
+            break; // Break out of the receiving loop if timeout occurs
+        }
+
+
     }
-if (receivedBytes > 0) {
-        std::cout << "Received: " << std::endl;
-    } else {
-        std::cerr << "Error receiving data" << std::endl;
-    }
-        
-    
-
-
         
 
 
@@ -447,24 +440,3 @@ if(n == recent_ack + 1 || getWinsize() - (recent_ack + 1 ) == 0 ){
     return false;
 }
 }
-/*
-void Receiver::data_received() {
-
-
-
-std::vector<int> Receiver::get_ack() {
-    std::vector<int> ack = buffer;
-    ack.insert(ack.end(), recent_ack);
-    return ack;
-}
-
-
-int Receiver::get_recent_ack() {
-    return recent_ack;
-}
-
-void Receiver::set_recent_ack(int ack) {
-    recent_ack = ack;
-}
-
-*/

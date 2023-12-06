@@ -6,6 +6,8 @@
 #include <string>
 #include <queue>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 #include <netdb.h>
 
 const int maxSize = 528;
@@ -22,7 +24,7 @@ void receive_data();
 is buffer is empty or the buffer has previous  seq numbers or it adds the seq number to buffer*/
 
 int getWinSize();
-
+void save_data_to_file(const std::string& data_file);
 /*concats buffer with recent_ack*/
 int get_recent_ack();
 bool save_packet(std::string file_name);
@@ -30,6 +32,8 @@ bool inspect_packet();
 unsigned int calcrc1();
 unsigned int extractCRC(uint8_t buf[]);
 unsigned int extractCRC2(uint8_t buf[]);
+bool Receiver::is_done();
+void Send_packet(uint8_t buf[]);
 void Send_neg_ack_packet(uint8_t buf[]);
 void Send_ack_packet(uint8_t buf[]);
 std::array<std::uint8_t, maxSize> make_packet(unsigned int Type, unsigned int TR, unsigned int Seqnum);
@@ -44,7 +48,6 @@ int getdatasize();
 private:
 std::mutex mtx;  // Mutex for synchronization
 std::condition_variable cv;  // Condition variable for signaling
-std::atomic<bool> done_receiving{ false };
 const int L = 2;
 const int T = 4;
 const int TP = 0;
@@ -57,6 +60,7 @@ int nextseq = 0;
 struct addrinfo hints, * results, * ptr;
 int Winsize;
 unsigned int crc1;
+bool done_receiving;
 uint8_t buffer[maxSize];
 std::queue<std::vector<uint8_t>>sentpackets;
 std::queue<std::vector<uint8_t>> data; 
