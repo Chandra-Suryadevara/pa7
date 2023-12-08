@@ -60,6 +60,7 @@ int main(int argc, char* argv[]) {
         payload.clear();
     }
 
+
     if (file.gcount() > 0) {
         payload.insert(payload.end(), buffer, buffer + file.gcount());
         sender.make_packet(payload);
@@ -233,8 +234,6 @@ void Sender::make_packet(const std::vector<char>& payload)
 
 
     all_packets.push_back(temppacket);
-      
-    Send_packet(temppacket);
 
 }
 
@@ -242,17 +241,21 @@ void Sender::Send_packet(Packet temppacket)
 {
 
     if ((temppacket.data[TP] >> 6 & 0b11) == 1) {
-
-        if (sendto(sock, reinterpret_cast<const char*>(temppacket.data), headersize + data_size, 0, ptr->ai_addr, ptr->ai_addrlen) == -1) {
-            std::cerr << "Error sending message" << std::endl;
+        if (Window.size() < 4) {
+            if (sendto(sock, reinterpret_cast<const char*>(temppacket.data), headersize + data_size, 0, ptr->ai_addr, ptr->ai_addrlen) == -1) {
+                std::cerr << "Error sending message" << std::endl;
+            }
+            else {
+                sentpackets.push(temppacket);
+                std::cout << " " << sizeof(temppacket.data) << std::endl;
+                temppacket.isSent = true;
+                nextSeqNum++;
+                timestep++;
+                std::cout << "sent";
+            }
         }
         else {
-            sentpackets.push_back(temppacket);
-            std::cout << " " << sizeof(temppacket.data) << std::endl;
-            temppacket.isSent = true;
-            nextSeqNum++;
-            timestep++;
-            std::cout << "sent";
+            std::cout << "waiting for acknowledgment" << std::endl;
         }
     }
 }
@@ -298,7 +301,15 @@ void Sender::Receive_packet() {
         std::cerr << "No data received" << std::endl;
     }
     close(sock);
+    
     received_packets.push_back(tempPacket);
+    if (((Window.front).data)[TP+1] == (tempPacket.data)[TP+1]) {
+        std::cout << "Ack knowledgement found " << std::endl;
+        recentAck = static_cast<int>(tempPaclet.data[TP + 1]);
+        Window.pop();
+        Send_packet(all_packets[nextindex]);
+    }
+   
     
 }
 

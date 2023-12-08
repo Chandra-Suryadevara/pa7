@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <thread>
+#include <queue>
 #include <netdb.h>
 #include <vector>
 const int maxSize = 528;
@@ -34,7 +35,7 @@ public:
       void inspect_packet(Packet temppacket);
       bool acknowledge(int s);
       bool canAddNew();
-      void RecievePacket(); // Fixed the function name, should be ReceivePacket()
+      void Recieve_packet(); // Fixed the function name, should be ReceivePacket()
       int addNew();
       void setSeqSize(int n);
       int getSeqSize();
@@ -44,10 +45,11 @@ public:
 
 
 private:
-int recentAck;
-std::vector<Packet> sentpackets;
+    int recentAck;
 std::vector<Packet> all_packets;
 std::vector<Packet> received_packets;
+std::queue<Packet> sentpackets;
+std::queue<Packet,Winsize> Window;
 int size;
 int nextSeqNum;
 int base;
@@ -56,6 +58,7 @@ int timestep = 0;
 int TRL;
 int Winsize;
 int bitSeqNum;
+int nextindex;
 int data_size;
 struct addrinfo hints, * results, * ptr;
 const int L = 2;
