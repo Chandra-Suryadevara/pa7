@@ -17,6 +17,7 @@
 
 
 unsigned int Receiver::calcrc1() {
+    //function that calculates the CRC1
     unsigned int crc1;
 
     crc1 = crc32(0L, NULL, 0);
@@ -37,6 +38,7 @@ std::vector<uint8_t> Receiver::extract_payload(uint8_t buf[]) {
 
 
 unsigned int Receiver::calcrc2() {
+    //Calculates CRC2
     uint8_t sub_payload[datasize];
     for (int i = 0; i < datasize; i++) {
         sub_payload[i] = buffer[12 + i];
@@ -176,7 +178,7 @@ void Receiver::save_data_to_file(const std::string& data_file) {
 
 
 void Receiver::Send_packet(uint8_t buf[]) {
-
+// function to 
     if ((buf[TP] >> 6 & 0b11) == 1) {
         if ((buf[TP] & 0x20) == 1) {
 
